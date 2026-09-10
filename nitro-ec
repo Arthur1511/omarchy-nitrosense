@@ -8,6 +8,11 @@ privileges beyond group `nitro` access to the EC device:
   * /dev/ec  (acpi_ec module, preferred — plain RW char device)
   * /sys/kernel/debug/ec/ec0/io  (ec_sys debugfs, fallback)
 
+Safety: EC registers are hardware-specific. `set` refuses to write on ANY
+machine whose DMI identity is not in the reviewed allowlist below (fail
+closed). Reads are always allowed so the widget can still show temperatures;
+an unsupported machine can write only with an explicit `--force` override.
+
 Register map mirrors Linux-NitroSense (ECS_AN515_46-class firmware).
 """
 
@@ -18,6 +23,7 @@ import sys
 
 DEV_EC = "/dev/ec"
 DEV_DEBUGFS = "/sys/kernel/debug/ec/ec0/io"
+DMI_DIR = "/sys/class/dmi/id"
 
 # Registers (AN515-55 / ECS_AN515_46).
 CPU_FAN_HI = 0x13
@@ -39,6 +45,35 @@ ADDRS = (CPU_FAN_HI, CPU_FAN_LO, GPU_FAN_HI, GPU_FAN_LO, GPU_FAN_MODE,
          CPU_FAN_MODE, NITRO_MODE, CPU_TEMP, SYS_TEMP, GPU_TEMP)
 
 _MAX_ADDR = 0xFF
+
+# Reviewed allowlist of EC firmware families. Each entry is a normalized
+# (lowercase, alphanumeric-only) substring matched against the normalized
+# DMI product name; the system vendor must be Acer. Only families whose
+# register map was verified on real hardware may be added here.
+SUPPORTED = ("an51555",)
+
+
+def norm(s):
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
+def read_dmi():
+    out = {}
+    for key in ("sys_vendor", "product_name", "product_version",
+                "board_name", "board_vendor"):
+        try:
+            with open(os.path.join(DMI_DIR, key)) as f:
+                out[key] = f.read().strip()
+        except OSError:
+            out[key] = ""
+    return out
+
+
+def hw_supported(dmi):
+    product = norm(dmi.get("product_name", ""))
+    if not product or "acer" not in norm(dmi.get("sys_vendor", "")):
+        return False
+    return any(frag in product for frag in SUPPORTED)
 
 
 def open_ec():
@@ -71,7 +106,7 @@ def _sensors_cpu_temp():
     return float(m.group(1)) if m else None
 
 
-def read_status(fd):
+def read_status(fd, dmi, writes_allowed=None):
     vals = {}
     for addr in ADDRS:
         vals[addr] = read_reg(fd, addr)
@@ -85,6 +120,9 @@ def read_status(fd):
     return {
         "ec": True,
         "device": fd.name,
+        "model": dmi.get("product_name", ""),
+        "hwSupported": hw_supported(dmi),
+        "writesAllowed": hw_supported(dmi) if writes_allowed is None else writes_allowed,
         "cpuTemp": vals.get(CPU_TEMP),
         "gpuTemp": vals.get(GPU_TEMP),
         "sysTemp": vals.get(SYS_TEMP),
@@ -96,12 +134,16 @@ def read_status(fd):
     }
 
 
-def degraded_status(reason):
+def degraded_status(reason, dmi):
     cpu = _sensors_cpu_temp()
+    supported = hw_supported(dmi)
     return {
         "ec": False,
         "error": reason,
         "device": None,
+        "model": dmi.get("product_name", ""),
+        "hwSupported": supported,
+        "writesAllowed": False,
         "cpuTemp": round(cpu) if cpu is not None else None,
         "gpuTemp": None,
         "sysTemp": None,
@@ -132,31 +174,51 @@ MODES = {
 
 
 def main():
-    args = sys.argv[1:]
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    forced = "--force" in sys.argv[1:]
+    dmi = read_dmi()
+
     if not args:
-        print(json.dumps(degraded_status("usage: nitro-ec [status|set <auto|quiet|balance|game>]")))
+        print(json.dumps(degraded_status(
+            "usage: nitro-ec [status|set <auto|quiet|balance|game>] [--force]", dmi)))
         return 1
 
-    if args[0] == "set":
-        if len(args) < 2 or args[1] not in MODES:
-            print(json.dumps(degraded_status("unknown mode")))
-            return 1
+    if args[0] == "set" and (len(args) < 2 or args[1] not in MODES):
+        print(json.dumps(degraded_status("unknown mode", dmi)))
+        return 1
 
     fd = open_ec()
     if fd is None:
         reason = f"EC недоступен: нет {DEV_EC} (запустите setup.sh)"
-        result = degraded_status(reason)
-        print(json.dumps(result))
+        print(json.dumps(degraded_status(reason, dmi)))
         return 1
 
     try:
+        # Fail closed before every write: refuse unless the DMI identity
+        # matches the reviewed allowlist (or the user forced --force).
+        if args[0] == "set":
+            supported = hw_supported(dmi)
+            if not supported:
+                if forced:
+                    print("WARNING: forcing EC writes on unsupported hardware; "
+                          "register offsets are firmware-specific and may "
+                          "damage the EC. Verified on: " +
+                          ", ".join(SUPPORTED), file=sys.stderr)
+                else:
+                    result = read_status(fd, dmi, writes_allowed=False)
+                    result["error"] = ("устройство не в allowlist — запись в EC "
+                                       "отключена (используйте --force на свой риск)")
+                    print(json.dumps(result))
+                    return 1
+
         if args[0] == "set":
             MODES[args[1]](fd)
-        result = read_status(fd)
+        result = read_status(fd, dmi)
+        result["writesAllowed"] = result["hwSupported"] or forced
         print(json.dumps(result))
         return 0
     except OSError as exc:
-        result = degraded_status(f"EC: {exc}")
+        result = degraded_status(f"EC: {exc}", dmi)
         print(json.dumps(result))
         return 1
     finally:

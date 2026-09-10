@@ -32,6 +32,7 @@ BarWidget {
   property string activeMode: ""
   readonly property bool hasStats: stats && stats.cpuTemp !== undefined
   readonly property bool hasEc: hasStats && stats.ec === true
+  readonly property bool canWrite: hasEc && stats.writesAllowed === true
   readonly property bool anyHot: stats && (isHot(stats.cpuTemp, 90) || isHot(stats.gpuTemp, 95) || isHot(stats.sysTemp, 85))
 
   function isHot(v, limit) { return v !== null && v !== undefined && Number(v) >= limit }
@@ -86,14 +87,14 @@ BarWidget {
   readonly property string tooltip: root.hasStats
     ? ("CPU " + root.fmtTemp(stats.cpuTemp) + "  ·  " + root.fmtRpm(stats.cpuFanRpm)
        + "\nПрофиль: " + root.profileText() + " · Вентилятор: " + root.fansText()
-       + (root.hasEc ? "" : "\nEC недоступен — выполните setup.sh (sudo)"))
+       + (root.hasEc ? (root.canWrite ? "" : "\nЗапись запрещена: модель не проверена") : "\nEC недоступен — выполните setup.sh (sudo)"))
     : "NitroSense\nЛКМ: настройки вентилятора"
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
   }
   function applyMode(key) {
-    if (!root.hasEc) return
+    if (!root.canWrite) return
     root.activeMode = key
     var command = [root.helperScript, "set", key]
     setProc.command = command
@@ -155,9 +156,9 @@ BarWidget {
     useActiveColor: root.anyHot
     onPressed: function(mouseButton) {
       if (mouseButton === Qt.LeftButton) root.toggle()
-      else if (mouseButton === Qt.RightButton && root.hasEc) root.cycleModes(1)
+      else if (mouseButton === Qt.RightButton && root.canWrite) root.cycleModes(1)
     }
-    onWheelMoved: function(delta) { if (root.hasEc) root.cycleModes(delta) }
+    onWheelMoved: function(delta) { if (root.canWrite) root.cycleModes(delta) }
   }
 
   component StatRow: Item {
@@ -232,6 +233,14 @@ BarWidget {
         font.pixelSize: Style.font.caption
       }
 
+      Text {
+        visible: root.hasEc && !root.canWrite
+        text: "Модель не проверена — запись в EC запрещена.\nТолько чтение датчиков."
+        color: root.warn
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+
       PanelSeparator { foreground: root.foreground }
 
       Column {
@@ -292,8 +301,8 @@ BarWidget {
               text: modelData.label
               tooltipText: modelData.hint
               foreground: root.foreground
-              selected: root.hasEc && root.activeMode === modelData.key
-              opacity: root.hasEc ? 1.0 : 0.45
+              selected: root.canWrite && root.activeMode === modelData.key
+              opacity: root.canWrite ? 1.0 : 0.45
               onClicked: root.applyMode(modelData.key)
             }
           }

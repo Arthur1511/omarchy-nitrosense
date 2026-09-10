@@ -29,8 +29,10 @@ The register map mirrors [Linux-NitroSense](https://github.com/LinuxNitro/Linux-
 | GPU fan mode | `0x21` (auto `0x10` / turbo `0x20`) |
 | Nitro mode | `0x2C` (quiet `0x00` / balance `0x01` / extreme `0x04`) |
 
-Other Acer Nitro models with the same EC firmware class may work out of the
-box, but are not guaranteed — the EC layout differs between firmware types.
+Other Acer Nitro models are **strictly read-only**: `nitro-ec` verifies the
+DMI identity (vendor + product name) against a reviewed allowlist before every
+EC write and refuses otherwise (fail closed). Only firmware families
+register-mapped and verified on real hardware may be added to the allowlist.
 
 If the EC is unreachable the widget degrades gracefully and shows a readable
 error instead of crashing the bar.
@@ -74,8 +76,15 @@ the user gains is EC access via group `nitro`.
 `nitro-ec` is a stateless CLI that does the same job without the UI:
 
 ```sh
-./nitro-ec status          # JSON: temps, fan RPM, modes
+./nitro-ec status          # JSON: temps, fan RPM, modes, hwSupported, writesAllowed
 ./nitro-ec set quiet       # quiet | balance | game | auto
+
+`set` is refused on hardware not in the reviewed DMI allowlist (exit code 1,
+no write). To force a write on unsupported hardware, on your own risk:
+
+```sh
+./nitro-ec set quiet --force   # prints a warning; may damage the EC
+```
 ```
 
 ## Configure

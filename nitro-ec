@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Stateless EC helper for the Acer Nitro AN515-55 (io.github.bobster05.nitrosense widget).
+
+Reads live temperature / fan-speed / mode registers from the embedded
+controller and applies the four fan modes the bar offers. No daemon, no
+privileges beyond group `nitro` access to the EC device:
+
+  * /dev/ec  (acpi_ec module, preferred — plain RW char device)
+  * /sys/kernel/debug/ec/ec0/io  (ec_sys debugfs, fallback)
+
+Register map mirrors Linux-NitroSense (ECS_AN515_46-class firmware).
+"""
+
+import json
+import os
+import re
+import sys
+
+DEV_EC = "/dev/ec"
+DEV_DEBUGFS = "/sys/kernel/debug/ec/ec0/io"
+
+# Registers (AN515-55 / ECS_AN515_46).
+CPU_FAN_HI = 0x13
+CPU_FAN_LO = 0x14
+GPU_FAN_HI = 0x15
+GPU_FAN_LO = 0x16
+GPU_FAN_MODE = 0x21
+CPU_FAN_MODE = 0x22
+NITRO_MODE = 0x2C
+CPU_TEMP = 0xB0
+SYS_TEMP = 0xB3
+GPU_TEMP = 0xB6
+
+CPU_FAN_AUTO, CPU_FAN_TURBO = 0x04, 0x08
+GPU_FAN_AUTO, GPU_FAN_TURBO = 0x10, 0x20
+NITRO_QUIET, NITRO_DEFAULT, NITRO_EXTREME = 0x00, 0x01, 0x04
+
+ADDRS = (CPU_FAN_HI, CPU_FAN_LO, GPU_FAN_HI, GPU_FAN_LO, GPU_FAN_MODE,
+         CPU_FAN_MODE, NITRO_MODE, CPU_TEMP, SYS_TEMP, GPU_TEMP)
+
+_MAX_ADDR = 0xFF
+
+
+def open_ec():
+    for path in (DEV_EC, DEV_DEBUGFS):
+        if os.path.exists(path):
+            try:
+                return open(path, "r+b", buffering=0)
+            except OSError:
+                continue
+    return None
+
+
+def read_reg(fd, addr):
+    fd.seek(addr)
+    data = fd.read(1)
+    return data[0] if data else None
+
+
+def write_reg(fd, addr, value):
+    fd.seek(addr)
+    fd.write(bytes((value,)))
+
+
+def _sensors_cpu_temp():
+    try:
+        out = os.popen("sensors 2>/dev/null").read()
+    except OSError:
+        return None
+    m = re.search(r"Package id\s*0:\s*\+?([0-9]+(?:\.[0-9]+)?)", out)
+    return float(m.group(1)) if m else None
+
+
+def read_status(fd):
+    vals = {}
+    for addr in ADDRS:
+        vals[addr] = read_reg(fd, addr)
+
+    def rpm(hi, lo):
+        h, l = vals.get(hi), vals.get(lo)
+        if h is None or l is None:
+            return None
+        return (l << 8) | h
+
+    return {
+        "ec": True,
+        "device": fd.name,
+        "cpuTemp": vals.get(CPU_TEMP),
+        "gpuTemp": vals.get(GPU_TEMP),
+        "sysTemp": vals.get(SYS_TEMP),
+        "cpuFanRpm": rpm(CPU_FAN_HI, CPU_FAN_LO),
+        "gpuFanRpm": rpm(GPU_FAN_HI, GPU_FAN_LO),
+        "cpuMode": vals.get(CPU_FAN_MODE),
+        "gpuMode": vals.get(GPU_FAN_MODE),
+        "nitroMode": vals.get(NITRO_MODE),
+    }
+
+
+def degraded_status(reason):
+    cpu = _sensors_cpu_temp()
+    return {
+        "ec": False,
+        "error": reason,
+        "device": None,
+        "cpuTemp": round(cpu) if cpu is not None else None,
+        "gpuTemp": None,
+        "sysTemp": None,
+        "cpuFanRpm": None,
+        "gpuFanRpm": None,
+        "cpuMode": None,
+        "gpuMode": None,
+        "nitroMode": None,
+    }
+
+
+def fans_auto(fd):
+    write_reg(fd, CPU_FAN_MODE, CPU_FAN_AUTO)
+    write_reg(fd, GPU_FAN_MODE, GPU_FAN_AUTO)
+
+
+def fans_turbo(fd):
+    write_reg(fd, CPU_FAN_MODE, CPU_FAN_TURBO)
+    write_reg(fd, GPU_FAN_MODE, GPU_FAN_TURBO)
+
+
+MODES = {
+    "auto": lambda fd: (fans_auto(fd), None),
+    "quiet": lambda fd: (write_reg(fd, NITRO_MODE, NITRO_QUIET), fans_auto(fd)),
+    "balance": lambda fd: (write_reg(fd, NITRO_MODE, NITRO_DEFAULT), fans_auto(fd)),
+    "game": lambda fd: (write_reg(fd, NITRO_MODE, NITRO_EXTREME), fans_turbo(fd)),
+}
+
+
+def main():
+    args = sys.argv[1:]
+    if not args:
+        print(json.dumps(degraded_status("usage: nitro-ec [status|set <auto|quiet|balance|game>]")))
+        return 1
+
+    if args[0] == "set":
+        if len(args) < 2 or args[1] not in MODES:
+            print(json.dumps(degraded_status("unknown mode")))
+            return 1
+
+    fd = open_ec()
+    if fd is None:
+        reason = f"EC недоступен: нет {DEV_EC} (запустите setup.sh)"
+        result = degraded_status(reason)
+        print(json.dumps(result))
+        return 1
+
+    try:
+        if args[0] == "set":
+            MODES[args[1]](fd)
+        result = read_status(fd)
+        print(json.dumps(result))
+        return 0
+    except OSError as exc:
+        result = degraded_status(f"EC: {exc}")
+        print(json.dumps(result))
+        return 1
+    finally:
+        fd.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

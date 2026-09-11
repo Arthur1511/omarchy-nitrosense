@@ -5,9 +5,9 @@ as an Omarchy bar widget (Quattro).
 
 Click the bar pill to open the details popup:
 
-- **Температура** — CPU, GPU and system (mainboard) temperatures
-- **Вентиляторы** — live CPU/GPU fan speed in RPM
-- **Режим вентилятора** — the four Acer fan modes: Авто (Auto) · Тихий (Quiet) · Баланс (Balance) · Игра (Game)
+- **Temperature** — CPU, GPU and system (mainboard) temperatures
+- **Fans** — live CPU/GPU fan speed in RPM
+- **Fan mode** — the four Acer fan modes: Auto · Quiet · Balance · Game
 
 The bar pill shows `CPU temp · CPU fan RPM`. All data is read straight from
 the embedded controller (EC) — no daemon, no polling service, no network.

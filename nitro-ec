@@ -222,7 +222,7 @@ def main():
 
     fd = open_ec()
     if fd is None:
-        reason = f"EC недоступен: нет {DEV_EC} (запустите setup.sh)"
+        reason = f"EC unavailable: {DEV_EC} missing (run setup.sh)"
         print(json.dumps(degraded_status(reason, dmi)))
         return 1
 
@@ -239,8 +239,8 @@ def main():
                           ", ".join(SUPPORTED), file=sys.stderr)
                 else:
                     result = read_status(fd, dmi, writes_allowed=False)
-                    result["error"] = ("устройство не в allowlist — запись в EC "
-                                       "отключена (используйте --force на свой риск)")
+                    result["error"] = ("device not in allowlist — EC writes disabled "
+                                       "(use --force at your own risk)")
                     print(json.dumps(result))
                     return 1
 

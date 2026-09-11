@@ -61,24 +61,24 @@ BarWidget {
   }
   function profileText() {
     var n = stats.nitroMode
-    if (n === 0) return "Тихий"
-    if (n === 1) return "Баланс"
-    if (n === 4) return "Игра"
-    return "Авто"
+    if (n === 0) return "Quiet"
+    if (n === 1) return "Balance"
+    if (n === 4) return "Game"
+    return "Auto"
   }
   function fansText() {
     var c = stats.cpuMode
     var g = stats.gpuMode
-    if (c === 0x04 && g === 0x10) return "Авто"
-    if (c === 0x08 || g === 0x20) return "Турбо"
-    return "Ручной"
+    if (c === 0x04 && g === 0x10) return "Auto"
+    if (c === 0x08 || g === 0x20) return "Turbo"
+    return "Manual"
   }
 
   readonly property var modes: [
-    { key: "auto", label: "Авто", hint: "Вентиляторы на автоматике" },
-    { key: "quiet", label: "Тихий", hint: "Тихий режим, вентиляторы на автом. подстройке" },
-    { key: "balance", label: "Баланс", hint: "Сбалансированный режим, вентиляторы на автомате" },
-    { key: "game", label: "Игра", hint: "Максимальная производительность, вентиляторы на максимум" }
+    { key: "auto", label: "Auto", hint: "Fans on automatic control" },
+    { key: "quiet", label: "Quiet", hint: "Quiet profile, fans self-tune" },
+    { key: "balance", label: "Balance", hint: "Balanced profile, fans on automatic control" },
+    { key: "game", label: "Game", hint: "Maximum performance, fans at full speed" }
   ]
 
   readonly property string barText: root.hasStats
@@ -86,9 +86,9 @@ BarWidget {
     : "Nitro"
   readonly property string tooltip: root.hasStats
     ? ("CPU " + root.fmtTemp(stats.cpuTemp) + "  ·  " + root.fmtRpm(stats.cpuFanRpm)
-       + "\nПрофиль: " + root.profileText() + " · Вентилятор: " + root.fansText()
-       + (root.hasEc ? (root.canWrite ? "" : "\nЗапись запрещена: модель не проверена") : "\nEC недоступен — выполните setup.sh (sudo)"))
-    : "NitroSense\nЛКМ: настройки вентилятора"
+       + "\nProfile: " + root.profileText() + " · Fan: " + root.fansText()
+       + (root.hasEc ? (root.canWrite ? "" : "\nWrites disabled: model not verified") : "\nEC unavailable — run setup.sh (sudo)"))
+    : "NitroSense\nLMB: fan settings"
 
   function refresh() {
     if (!statusProc.running) statusProc.running = true
@@ -252,7 +252,7 @@ BarWidget {
 
       Text {
         visible: root.hasEc
-        text: "Профиль: " + root.profileText() + " · Вентилятор: " + root.fansText()
+        text: "Profile: " + root.profileText() + " · Fan: " + root.fansText()
         color: Qt.darker(root.foreground, 1.25)
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -260,7 +260,7 @@ BarWidget {
 
       Text {
         visible: root.hasStats && !root.hasEc
-        text: "EC недоступен — для управления вентилятором\nвыполните: sudo " + root.setupScript
+        text: "EC unavailable — to control the fan\nrun: sudo " + root.setupScript
         color: root.warn
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -268,7 +268,7 @@ BarWidget {
 
       Text {
         visible: root.hasEc && !root.canWrite
-        text: "Модель не проверена — запись в EC запрещена.\nТолько чтение датчиков."
+        text: "Model not verified — EC writes disabled.\nSensors are read-only."
         color: root.warn
         font.family: root.fontFamily
         font.pixelSize: Style.font.caption
@@ -283,12 +283,12 @@ BarWidget {
         PanelSectionHeader {
           foreground: root.foreground
           fontFamily: root.fontFamily
-          text: "ТЕМПЕРАТУРА"
+          text: "TEMPERATURE"
         }
 
         StatRow { label: "CPU"; value: root.fmtTemp(root.stats ? root.stats.cpuTemp : null); valueColor: root.tempColor(root.stats ? root.stats.cpuTemp : null, 80, 90) }
         StatRow { label: "GPU"; value: root.fmtTemp(root.stats ? root.stats.gpuTemp : null); valueColor: root.tempColor(root.stats ? root.stats.gpuTemp : null, 85, 95) }
-        StatRow { label: "Система"; value: root.fmtTemp(root.stats ? root.stats.sysTemp : null); valueColor: root.tempColor(root.stats ? root.stats.sysTemp : null, 70, 85) }
+        StatRow { label: "System"; value: root.fmtTemp(root.stats ? root.stats.sysTemp : null); valueColor: root.tempColor(root.stats ? root.stats.sysTemp : null, 70, 85) }
       }
 
       PanelSeparator { foreground: root.foreground }
@@ -300,7 +300,7 @@ BarWidget {
         PanelSectionHeader {
           foreground: root.foreground
           fontFamily: root.fontFamily
-          text: "ВЕНТИЛЯТОРЫ"
+          text: "FANS"
         }
 
         StatRow { label: "CPU"; value: root.fmtRpm(root.stats ? root.stats.cpuFanRpm : null) }
@@ -317,7 +317,7 @@ BarWidget {
         PanelSectionHeader {
           foreground: root.foreground
           fontFamily: root.fontFamily
-          text: "РЕЖИМ ВЕНТИЛЯТОРА"
+          text: "FAN MODE"
         }
 
         Grid {

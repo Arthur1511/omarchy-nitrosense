@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.bobster05.nitrosense",
   "name": "NitroSense",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": "Denis (bobster05)",
   "license": "MIT",
   "description": "Live temperature, fan speed and fan-mode control for Acer Nitro.",

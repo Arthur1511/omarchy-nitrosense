@@ -24,6 +24,10 @@ import sys
 DEV_EC = "/dev/ec"
 DEV_DEBUGFS = "/sys/kernel/debug/ec/ec0/io"
 DMI_DIR = "/sys/class/dmi/id"
+HWMON_DIR = "/sys/class/hwmon"
+
+# CPU temperature fallback uses only these (kernel-owned) hwmon drivers.
+CPU_HWMONS = ("coretemp", "k10temp", "zenpower", "cpu_thermal")
 
 # Registers (AN515-55 / ECS_AN515_46).
 CPU_FAN_HI = 0x13
@@ -97,13 +101,42 @@ def write_reg(fd, addr, value):
     fd.write(bytes((value,)))
 
 
-def _sensors_cpu_temp():
+def _cpu_hwmon_temp():
+    """CPU temperature fallback read straight from the kernel's hwmon sysfs.
+
+    Deliberately avoids exec()ing `sensors` (no interpreter, shell, PATH lookup
+    or external binary). Returns °C as a float, or None when no matching
+    driver is present.
+    """
+    best = None
     try:
-        out = os.popen("sensors 2>/dev/null").read()
+        entries = sorted(os.listdir(HWMON_DIR))
     except OSError:
         return None
-    m = re.search(r"Package id\s*0:\s*\+?([0-9]+(?:\.[0-9]+)?)", out)
-    return float(m.group(1)) if m else None
+    for entry in entries:
+        base = os.path.join(HWMON_DIR, entry)
+        try:
+            with open(os.path.join(base, "name")) as f:
+                driver = f.read().strip()
+        except OSError:
+            continue
+        if driver not in CPU_HWMONS:
+            continue
+        try:
+            files = os.listdir(base)
+        except OSError:
+            continue
+        for name in files:
+            if not (name.startswith("temp") and name.endswith("_input")):
+                continue
+            try:
+                with open(os.path.join(base, name)) as f:
+                    value = int(f.read().strip())
+            except (OSError, ValueError):
+                continue
+            if best is None or value > best:
+                best = value
+    return best / 1000.0 if best is not None else None
 
 
 def read_status(fd, dmi, writes_allowed=None):
@@ -135,7 +168,7 @@ def read_status(fd, dmi, writes_allowed=None):
 
 
 def degraded_status(reason, dmi):
-    cpu = _sensors_cpu_temp()
+    cpu = _cpu_hwmon_temp()
     supported = hw_supported(dmi)
     return {
         "ec": False,

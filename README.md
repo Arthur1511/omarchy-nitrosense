@@ -117,6 +117,13 @@ unloads `acpi_ec`. Group membership can be cleaned up with
   at runtime. Only members of `nitro` can touch fan/temp registers.
 - Setup must run once with `sudo`; it only creates a group, a module autoload
   config and two udev rules — it does not run any daemon.
+- EC writes are **fail-closed**: `nitro-ec` verifies the DMI identity against
+  a reviewed allowlist before every write and refuses otherwise (`--force`
+  opts in with a warning).
+- Hard limits on helper execution: `nitro-ec` never spawns a shell or an
+  external binary (the CPU-temp fallback reads `/sys/class/hwmon` directly);
+  the widget bounds the helper's output (64 KB) and SIGKILLs the helper if it
+  exceeds a 3 s deadline.
 
 ## License
 

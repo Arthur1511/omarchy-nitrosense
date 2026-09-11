@@ -120,12 +120,29 @@ BarWidget {
     onTriggered: root.refresh()
   }
 
+  // Watchdog: the helper has a hard deadline; if it still runs past it the
+  // whole helper process (childless, never spawns a shell) is SIGKILLed so a
+  // wedged helper cannot wedge the shell's event loop or the poll timer.
+  Timer {
+    id: statusWatchdog
+    interval: 3000
+    onTriggered: {
+      if (statusProc.running) statusProc.signal(9)
+    }
+  }
+
   Process {
     id: statusProc
     command: [root.helperScript, "status"]
+    onStarted: statusWatchdog.restart()
     stdout: StdioCollector {
+      id: statusOut
       waitForEnd: true
+      onDataChanged: {
+        if (statusProc.running && statusOut.data.length > 65536) statusProc.signal(9)
+      }
       onStreamFinished: {
+        statusWatchdog.stop()
         try {
           var parsed = JSON.parse(String(text || ""))
           if (parsed && typeof parsed === "object") {
@@ -138,12 +155,28 @@ BarWidget {
     }
   }
 
+  Timer {
+    id: setWatchdog
+    interval: 3000
+    onTriggered: {
+      if (setProc.running) setProc.signal(9)
+    }
+  }
+
   Process {
     id: setProc
     command: [root.helperScript, "set", "auto"]
+    onStarted: setWatchdog.restart()
     onExited: Qt.callLater(function() {
       if (!statusProc.running) statusProc.running = true
     })
+    stdout: StdioCollector {
+      id: setOut
+      waitForEnd: true
+      onDataChanged: {
+        if (setProc.running && setOut.data.length > 65536) setProc.signal(9)
+      }
+    }
   }
 
   WidgetButton {

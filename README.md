@@ -120,10 +120,13 @@ unloads `acpi_ec`. Group membership can be cleaned up with
 - EC writes are **fail-closed**: `nitro-ec` verifies the DMI identity against
   a reviewed allowlist before every write and refuses otherwise (`--force`
   opts in with a warning).
-- Hard limits on helper execution: `nitro-ec` never spawns a shell or an
-  external binary (the CPU-temp fallback reads `/sys/class/hwmon` directly);
-  the widget bounds the helper's output (64 KB) and SIGKILLs the helper if it
-  exceeds a 3 s deadline.
+- Hard limits on helper execution: `nitro-ec` carries the fixed shebang
+  `#!/usr/bin/python3` — the kernel execs that absolute interpreter directly,
+  so `/usr/bin/env` and ambient `PATH` are never consulted. On Arch the target
+  is the system-managed `/usr/bin/python3` (root-owned, distro-updated).
+  The helper never spawns a shell or an external binary (the CPU-temp
+  fallback reads `/sys/class/hwmon` directly); the widget bounds the helper's
+  output (64 KB) and SIGKILLs the helper if it exceeds a 3 s deadline.
 
 ## License
 

@@ -54,7 +54,8 @@ _MAX_ADDR = 0xFF
 # (lowercase, alphanumeric-only) substring matched against the normalized
 # DMI product name; the system vendor must be Acer. Only families whose
 # register map was verified on real hardware may be added here.
-SUPPORTED = ("an51555",)
+# AN515-42 uses the same ECS_AN515_46-class firmware as AN515-44/46/54/56/57/58/AN517-55
+SUPPORTED = ("an51555", "an51542")
 
 
 def norm(s):

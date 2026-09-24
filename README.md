@@ -15,6 +15,7 @@ the embedded controller (EC) — no daemon, no polling service, no network.
 ## Hardware support
 
 Tested on an **Acer Nitro AN515-55** (ECS AN515-46-class EC firmware).
+**Acer Nitro AN515-42** uses the same ECS_AN515_46-class firmware family and is supported.
 
 The register map mirrors [Linux-NitroSense](https://github.com/LinuxNitro/Linux-NitroSense):
 
